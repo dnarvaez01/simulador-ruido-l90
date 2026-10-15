@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simulador de Ruido de Fondo (L90)</title>
+    <style>
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            background-color: #f0f2f5; 
+            margin: 0; 
+            padding: 40px 20px; 
+            color: #333; 
+        }
+        .container { 
+            max-width: 1000px; 
+            margin: 0 auto; 
+            background: white; 
+            padding: 30px; 
+            border-radius: 12px; 
+            box-shadow: 0 8px 24px rgba(0,0,0,0.1); 
+        }
+        h1 { 
+            text-align: center; 
+            color: #1a252f; 
+            margin-bottom: 5px;
+        }
+        p.subtitle { 
+            text-align: center; 
+            font-size: 1.1em; 
+            color: #7f8c8d; 
+            margin-bottom: 30px;
+        }
+        .canvas-container {
+            position: relative;
+            background: #fafafa;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 15px;
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.02);
+        }
+        canvas { 
+            display: block; 
+            width: 100%; 
+            height: 450px;
+        }
+        .legend { 
+            display: flex; 
+            justify-content: center; 
+            gap: 30px; 
+            margin-bottom: 15px; 
+            font-weight: 600;
+            font-size: 1.1em;
+        }
+        .l10 { color: #e74c3c; }
+        .l50 { color: #2ecc71; }
+        .l90 { color: #3498db; }
+        .controls { 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center; 
+            margin-top: 30px; 
+            flex-wrap: wrap; 
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            border: 1px solid #eee;
+        }
+        .control-group { 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            flex: 1;
+        }
+        label {
+            font-weight: bold;
+            color: #2c3e50;
+            margin-bottom: 10px;
+        }
+        button { 
+            background-color: #3498db; 
+            color: white; 
+            border: none; 
+            padding: 14px 28px; 
+            font-size: 16px; 
+            font-weight: bold;
+            border-radius: 6px; 
+            cursor: pointer; 
+            transition: all 0.2s; 
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        button:hover { 
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(0,0,0,0.15);
+        }
+        button:active { 
+            transform: translateY(1px); 
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .btn-siren { background-color: #e74c3c; }
+        .btn-siren:hover { background-color: #c0392b; }
+        .btn-bark { background-color: #f39c12; }
+        .btn-bark:hover { background-color: #d68910; }
+        input[type=range] { 
+            width: 80%; 
+            margin-top: 5px; 
+        }
+        #baseValue {
+            margin-top: 8px;
+            font-weight: bold;
+            color: #7f8c8d;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Simulador de Ruido de Fondo (L90)</h1>
+        <p class="subtitle">Observa cómo los eventos fuertes alteran los promedios (L10/L50), pero el L90 se mantiene estable filtrando los ruidos esporádicos.</p>
+        
+        <div class="legend">
+            <span class="l10">▬ L10 (Picos / 10% del tiempo)</span>
+            <span class="l50">▬ L50 (Mediana / 50% del tiempo)</span>
+            <span class="l90">▬ L90 (Ruido de Fondo / 90% del tiempo)</span>
+        </div>
+
+        <div class="canvas-container">
+            <canvas id="chart" width="900" height="450"></canvas>
+        </div>
+
+        <div class="controls">
+            <div class="control-group">
+                <label for="baseNoise">Control de Ruido Constante (Autopista lejana, Viento)</label>
+                <input type="range" id="baseNoise" min="30" max="70" value="45">
+                <span id="baseValue">45 dB</span>
+            </div>
+            <div class="control-group">
+                <button class="btn-siren" id="btnSiren">🚨 Pasar Ambulancia</button>
+            </div>
+            <div class="control-group">
+                <button class="btn-bark" id="btnBark">🐕 Ladrido de Perro</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('chart');
+        const ctx = canvas.getContext('2d');
+        const dataLength = 250; 
+        let data = new Array(dataLength).fill(45);
+        
+        let baseNoise = 45;
+        let sirenEffect = 0;
+        let barkEffect = 0;
+
+        document.getElementById('baseNoise').addEventListener('input', (e) => {
+            baseNoise = parseInt(e.target.value);
+            document.getElementById('baseValue').innerText = baseNoise + ' dB';
+        });
+
+        document.getElementById('btnSiren').addEventListener('click', () => {
+            sirenEffect = 120; // Frames of siren duration
+        });
+
+        document.getElementById('btnBark').addEventListener('click', () => {
+            barkEffect = 20; // Frames of bark duration
+        });
+
+        function getNoiseLevel() {
+            let noise = baseNoise + (Math.random() * 6 - 3); // Base background noise fluctuation
+            
+            if (sirenEffect > 0) {
+                // Siren logic: wave pattern rising and falling
+                let sirenVol = Math.sin(sirenEffect * 0.1) * 8;
+                noise += 30 + sirenVol;
+                sirenEffect--;
+            }
+            
+            if (barkEffect > 0) {
+                // Sharp spikes for bark
+                if (barkEffect % 6 > 3) {
+                    noise += 25 + Math.random() * 10;
+                }
+                barkEffect--;
+            }
+            
+            // Random minimal city noise (distant honks)
+            if (Math.random() < 0.015) noise += 12;
+
+            return Math.max(20, Math.min(100, noise)); // Clamp values
+        }
+
+        function calculatePercentiles() {
+            let sorted = [...data].sort((a, b) => a - b);
+            let l90 = sorted[Math.floor(dataLength * 0.1)]; 
+            let l50 = sorted[Math.floor(dataLength * 0.5)];
+            let l10 = sorted[Math.floor(dataLength * 0.9)]; 
+            return { l90, l50, l10 };
+        }
+
+        function draw() {
+            data.push(getNoiseLevel());
+            data.shift();
+
+            let stats = calculatePercentiles();
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Draw Y-Axis (dB)
+            ctx.strokeStyle = '#e0e0e0';
+            ctx.lineWidth = 1;
+            ctx.font = '13px sans-serif';
+            ctx.fillStyle = '#7f8c8d';
+            
+            for(let i=20; i<=100; i+=10) {
+                let y = canvas.height - ((i-20) / 80) * canvas.height;
+                ctx.beginPath();
+                ctx.moveTo(40, y);
+                ctx.lineTo(canvas.width, y);
+                ctx.stroke();
+                ctx.fillText(i + ' dB', 5, y + 4);
+            }
+
+            // Draw Time Noise Line
+            ctx.beginPath();
+            ctx.strokeStyle = '#95a5a6';
+            ctx.lineWidth = 2.5;
+            ctx.lineJoin = 'round';
+            for (let i = 0; i < dataLength; i++) {
+                let x = 40 + (i / (dataLength - 1)) * (canvas.width - 40);
+                let y = canvas.height - ((data[i]-20) / 80) * canvas.height;
+                if (i === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            }
+            ctx.stroke();
+
+            // Function to draw L lines
+            function drawHLine(val, color, label) {
+                let y = canvas.height - ((val-20) / 80) * canvas.height;
+                ctx.beginPath();
+                ctx.strokeStyle = color;
+                ctx.lineWidth = 2.5;
+                ctx.setLineDash([8, 6]);
+                ctx.moveTo(40, y);
+                ctx.lineTo(canvas.width, y);
+                ctx.stroke();
+                ctx.setLineDash([]);
+                
+                // Draw Label Background
+                ctx.fillStyle = 'rgba(255,255,255,0.9)';
+                ctx.fillRect(canvas.width - 95, y - 12, 90, 24);
+                
+                // Draw Label Text
+                ctx.fillStyle = color;
+                ctx.font = 'bold 14px sans-serif';
+                ctx.fillText(label + ' (' + val.toFixed(1) + ')', canvas.width - 90, y + 5);
+            }
+
+            drawHLine(stats.l90, '#3498db', 'L90');
+            drawHLine(stats.l50, '#2ecc71', 'L50');
+            drawHLine(stats.l10, '#e74c3c', 'L10');
+
+            requestAnimationFrame(() => setTimeout(draw, 40)); 
+        }
+        
+        draw();
+    </script>
+</body>
+</html>
